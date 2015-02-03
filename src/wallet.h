@@ -81,37 +81,33 @@ private:
 
 public:
     mutable CCriticalSection cs_wallet;
-
     bool fFileBacked;
     std::string strWalletFile;
-	bool fStakeForCharity;
-	bool fS4CNotificator;
-	int nStakeForCharityPercent;
-	int64 nStakeForCharityMin;
-	int64 nStakeForCharityMax;
-	CBitcoinAddress strStakeForCharityAddress;
-	CBitcoinAddress strStakeForCharityChangeAddress;
+	std::set<int64> setKeyPool;
+	typedef std::map<unsigned int, CMasterKey> MasterKeyMap;
+    MasterKeyMap mapMasterKeys;
+    unsigned int nMasterKeyMaxID;
 	bool fWalletUnlockMintOnly;
-	int64 nAmountSelected;
-	std::string strBestAddress;
-	bool fCombine;
+
+	//SplitBlock
 	uint64 nStakeSplitThreshold;
 	bool fSplitBlock;
 	
-	// disable stake
+	//MultiSend
+	std::vector<std::pair<std::string, int> > vMultiSend;
+	bool fMultiSend;
+	bool fMultiSendNotify;
+	std::string strMultiSendChangeAddress;
+	int nLastMultiSendHeight;
+	std::vector<std::string> vDisabledAddresses;
+	
+	// DisableStake
 	bool fDisableStake;
 	std::string strDisableType;
 	std::string strDisableArg;
 	double dUserNumber;
 	bool fStakeRequirement;
 	
-    std::set<int64> setKeyPool;
-
-
-    typedef std::map<unsigned int, CMasterKey> MasterKeyMap;
-    MasterKeyMap mapMasterKeys;
-    unsigned int nMasterKeyMaxID;
-
     CWallet()
     {
         nWalletVersion = FEATURE_BASE;
@@ -120,24 +116,24 @@ public:
         nMasterKeyMaxID = 0;
         pwalletdbEncryption = NULL;
         nOrderPosNext = 0;
-		fStakeForCharity = false;
-		fS4CNotificator = false;
-        nStakeForCharityPercent = 0;
-        strStakeForCharityAddress = "";
-		strStakeForCharityChangeAddress = "";
-		nStakeForCharityMin = 0;
-		nStakeForCharityMax = 0;
 		fWalletUnlockMintOnly = false;
-		nAmountSelected = 0;
-		strBestAddress = "";
-		fCombine = false;
 		nStakeSplitThreshold = 1000;
 		fSplitBlock = false;
+		
+		//DisableStake
 		fDisableStake = false;
 		strDisableType = "";
 		strDisableArg = "";
 		dUserNumber = 0;
-		 fStakeRequirement =  false;
+		fStakeRequirement =  false;
+		
+		//MultiSend
+		vMultiSend.clear();
+		fMultiSend = false;
+		fMultiSendNotify = false;
+		strMultiSendChangeAddress = "";
+		nLastMultiSendHeight = 0;
+		vDisabledAddresses.clear();
     }
     CWallet(std::string strWalletFileIn)
     {
@@ -148,24 +144,24 @@ public:
         nMasterKeyMaxID = 0;
         pwalletdbEncryption = NULL;
         nOrderPosNext = 0;
-		fStakeForCharity = false;
-		fS4CNotificator = false;
-        nStakeForCharityPercent = 0;
-        strStakeForCharityAddress = "";
-		strStakeForCharityChangeAddress = "";
-		nStakeForCharityMin = MIN_TXOUT_AMOUNT;
-		nStakeForCharityMax = MAX_MONEY;
 		fWalletUnlockMintOnly = false;
-		nAmountSelected = 0;
-		strBestAddress = "";
-		fCombine = false;
 		nStakeSplitThreshold = 1000;
 		fSplitBlock = false;
+		
+		//DisableStake
 		fDisableStake = false;
 		strDisableType = "";
 		strDisableArg = "";
 		dUserNumber = 0;
 		fStakeRequirement =  false;
+		
+		//MultiSend
+		vMultiSend.clear();
+		fMultiSend = false;
+		fMultiSendNotify = false;
+		strMultiSendChangeAddress = "";
+		nLastMultiSendHeight = 0;
+		vDisabledAddresses.clear();
     }
 
     std::map<uint256, CWalletTx> mapWallet;
@@ -226,11 +222,13 @@ public:
     void ReacceptWalletTransactions();
     void ResendWalletTransactions();
     int64 GetBalance() const;
+	int64 GetBalanceV1() const;
     int64 GetUnconfirmedBalance() const;
     int64 GetImmatureBalance() const;
     int64 GetStake() const;
     int64 GetNewMint() const;
 	bool StakeForCharity();
+	bool MultiSend();
     bool CreateTransaction(const std::vector<std::pair<CScript, int64> >& vecSend, CWalletTx& wtxNew, CReserveKey& reservekey, int64& nFeeRet, int nSplitBlock, bool fAllowS4C=false, const CCoinControl *coinControl=NULL);
     bool CreateTransaction(CScript scriptPubKey, int64 nValue, CWalletTx& wtxNew, CReserveKey& reservekey, int64& nFeeRet, bool fAllowS4C=false, const CCoinControl *coinControl=NULL);
     bool CommitTransaction(CWalletTx& wtxNew, CReserveKey& reservekey);
@@ -704,6 +702,49 @@ public:
         return false;
     }
 
+	bool IsConfirmedV1() const //will use this for rpc getbalance, so that it reports unconfirmed intrawallet transfers as part of your total balance
+    {
+        // Quick answer in most cases
+        if (!IsFinal())
+            return false;
+        if (GetDepthInMainChain() >= 1)
+            return true;
+        if (!IsFromMe()) // using wtx's cached debit
+            return false;
+
+        // If no confirmations but it's from us, we can still
+        // consider it confirmed if all dependencies are confirmed
+        std::map<uint256, const CMerkleTx*> mapPrev;
+        std::vector<const CMerkleTx*> vWorkQueue;
+        vWorkQueue.reserve(vtxPrev.size()+1);
+        vWorkQueue.push_back(this);
+        for (unsigned int i = 0; i < vWorkQueue.size(); i++)
+        {
+            const CMerkleTx* ptx = vWorkQueue[i];
+
+            if (!ptx->IsFinal())
+                return false;
+            if (ptx->GetDepthInMainChain() >= 1)
+                continue;
+            if (!pwallet->IsFromMe(*ptx))
+                return false;
+
+            if (mapPrev.empty())
+            {
+                BOOST_FOREACH(const CMerkleTx& tx, vtxPrev)
+                    mapPrev[tx.GetHash()] = &tx;
+            }
+
+            BOOST_FOREACH(const CTxIn& txin, ptx->vin)
+            {
+                if (!mapPrev.count(txin.prevout.hash))
+                    return false;
+                vWorkQueue.push_back(mapPrev[txin.prevout.hash]);
+            }
+        }
+        return true;
+    }
+	
     bool WriteToDisk();
 
     int64 GetTxTime() const;
