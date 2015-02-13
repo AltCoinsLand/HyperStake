@@ -70,7 +70,7 @@ class CWallet : public CCryptoKeyStore
 {
 private:
     bool SelectCoins(int64 nTargetValue, unsigned int nSpendTime, std::set<std::pair<const CWalletTx*,unsigned int> >& setCoinsRet, int64& nValueRet, const CCoinControl *coinControl=NULL) const;
-	bool SelectStakeCoins(std::set<std::pair<const CWalletTx*,unsigned int> >& setCoinsRet, int64 nTargetAmount) const;
+
     CWalletDB *pwalletdbEncryption;
 
     // the current wallet version: clients below this version are not able to load the wallet
@@ -90,6 +90,7 @@ public:
 	bool fWalletUnlockMintOnly;
 
 	//SplitBlock
+	uint64 nStakeSplitThreshold;
 	bool fSplitBlock;
 	
 	//MultiSend
@@ -99,10 +100,6 @@ public:
 	std::string strMultiSendChangeAddress;
 	int nLastMultiSendHeight;
 	std::vector<std::string> vDisabledAddresses;
-	
-	// Stake Settings
-	unsigned int nHashDrift;
-	uint64 nStakeSplitThreshold;
 	
 	// DisableStake
 	bool fDisableStake;
@@ -120,6 +117,7 @@ public:
         pwalletdbEncryption = NULL;
         nOrderPosNext = 0;
 		fWalletUnlockMintOnly = false;
+		nStakeSplitThreshold = 1000;
 		fSplitBlock = false;
 		
 		//DisableStake
@@ -128,10 +126,6 @@ public:
 		strDisableArg = "";
 		dUserNumber = 0;
 		fStakeRequirement =  false;
-		
-		// Stake Settings
-		nHashDrift = 60;
-		nStakeSplitThreshold = 2000;
 		
 		//MultiSend
 		vMultiSend.clear();
@@ -151,6 +145,7 @@ public:
         pwalletdbEncryption = NULL;
         nOrderPosNext = 0;
 		fWalletUnlockMintOnly = false;
+		nStakeSplitThreshold = 1000;
 		fSplitBlock = false;
 		
 		//DisableStake
@@ -159,10 +154,6 @@ public:
 		strDisableArg = "";
 		dUserNumber = 0;
 		fStakeRequirement =  false;
-		
-		// Stake Settings
-		nHashDrift = 60;
-		nStakeSplitThreshold = 2000;
 		
 		//MultiSend
 		vMultiSend.clear();

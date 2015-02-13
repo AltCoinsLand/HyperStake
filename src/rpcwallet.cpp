@@ -1999,10 +1999,16 @@ Value getstaketx(const Array& params, bool fHelp)
 }
 
 //presstab HyperStake
-double getWeight()
+Value getweight(const Array& params, bool fHelp)
 {
+	 if (fHelp)
+        throw runtime_error(
+            "getweight\n"
+            "This will return your total stake weight for confirmed outputs\n");
+			
 	std::vector<COutput> vCoins;
     pwalletMain->AvailableCoins(vCoins);
+	
 	uint64 nWeightSum = 0;
 	BOOST_FOREACH(const COutput& out, vCoins)
     {
@@ -2016,17 +2022,6 @@ double getWeight()
 		nWeightSum += nWeight;
 	}
 	return (double)nWeightSum;
-}
-
-//presstab HyperStake
-Value getweight(const Array& params, bool fHelp)
-{
-	if (fHelp)
-        throw runtime_error(
-            "getweight\n"
-            "This will return your total stake weight for confirmed outputs\n");
-			
-	return getWeight();
 }
 
 //presstab HyperStake
@@ -2489,11 +2484,10 @@ Value multisend(const Array &params, bool fHelp)
 	if(params.size() == 2 && params[0].get_str() == "delete")
 	{
 		int del = boost::lexical_cast<int>(params[1].get_str());
-		if(!walletdb.EraseMultiSend(pwalletMain->vMultiSend))
-		   return "failed to delete old MultiSend vector from database";
-		
 		pwalletMain->vMultiSend.erase(pwalletMain->vMultiSend.begin() + del);
 		
+		if(!walletdb.EraseMultiSend(pwalletMain->vMultiSend))
+		   return "failed to delete old MultiSend vector from database";
 		if(!walletdb.WriteMultiSend(pwalletMain->vMultiSend))
 			return "walletdb WriteMultiSend failed!";
 		return printMultiSend();
