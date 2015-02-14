@@ -3108,8 +3108,9 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         pfrom->fSuccessfullyConnected = true;
 
         printf("receive version message: version %d, blocks=%d, us=%s, them=%s, peer=%s\n", pfrom->nVersion, pfrom->nStartingHeight, addrMe.ToString().c_str(), addrFrom.ToString().c_str(), pfrom->addr.ToString().c_str());
-
-        cPeerBlockCounts.input(pfrom->nStartingHeight);
+		
+		if(pfrom->nVersion == PROTOCOL_VERSION)
+			cPeerBlockCounts.input(pfrom->nStartingHeight);
 
 	// Be more aggressive with blockchain download. Send new getblocks() message after connection
 	// to new node if waited longer than MAX_TIME_SINCE_BEST_BLOCK.
